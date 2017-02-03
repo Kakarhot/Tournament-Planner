@@ -9,14 +9,15 @@ import psycopg2
 def connect():
     """Connect to the PostgreSQL database.  Returns a database connection."""
     conn = psycopg2.connect("dbname=tournament")
-    return conn
+    cursor = conn.cursor()
+    return conn, cursor
 
 
 def deleteMatches():
     """Remove all the match records from the database."""
     conn = psycopg2.connect("dbname=tournament")
     c = conn.cursor()
-    c.execute("DELETE FROM match")
+    c.execute("TRUNCATE match")
     conn.commit()
     conn.close()
 
@@ -25,7 +26,7 @@ def deletePlayers():
     """Remove all the player records from the database."""
     conn = psycopg2.connect("dbname=tournament")
     c = conn.cursor()
-    c.execute("DELETE FROM player")
+    c.execute("TRUNCATE player CASCADE")
     conn.commit()
     conn.close()
 
@@ -42,9 +43,6 @@ def countPlayers():
     return count
 
 
-   
-
-
 def registerPlayer(name):
     """Adds a player to the tournament database.
   
@@ -56,10 +54,18 @@ def registerPlayer(name):
     """
     conn = psycopg2.connect("dbname=tournament")
     c = conn.cursor()
-    c.execute("INSERT INTO player (name) VALUES (%s)", (name,))
-    c.execute("SELECT id FROM player WHERE name = (%s)", (name,))
+
+    query = "INSERT INTO player (name) VALUES (%s)"
+    param = (name,)
+    c.execute(query, param)
+
+    query = "SELECT id FROM player WHERE name = (%s)"
+    param = (name,)
+    c.execute(query, param)
     player_id = c.fetchall()[0][0]
-    c.execute("INSERT INTO match (id, num_of_matches, num_of_wins) VALUES (" + str(player_id) + ", 0, 0)")   # Insert the player into the match table with same id.
+
+    query = "INSERT INTO match (id, num_of_matches, num_of_wins) VALUES (" + str(player_id) + ", 0, 0)"
+    c.execute(query)   # Insert the player into the match table with same id.
     conn.commit()
     conn.close()
 
@@ -83,16 +89,19 @@ def playerStandings():
 
     conn = psycopg2.connect("dbname=tournament")
     c = conn.cursor()
-    c.execute("SELECT COALESCE(max(num_of_wins),0) FROM player_match")   # Get the maximum number of wins, set it to 0 if it's NULL.
+    query = "SELECT COALESCE(max(num_of_wins),0) FROM player_match"
+    c.execute(query)   # Get the maximum number of wins, set it to 0 if it's NULL.
     max_win = c.fetchall()[0][0]
 
     for wins in range(max_win, -1, -1):
-        c.execute("SELECT id, name, COALESCE(num_of_wins,0), COALESCE(num_of_matches,0) FROM player_match WHERE COALESCE(player_match.num_of_wins,0) = " + str(wins))   # Get data from the VIEW. Set the value to 0 if it's NULL.
+        query = "SELECT id, name, COALESCE(num_of_wins,0), COALESCE(num_of_matches,0) FROM player_match WHERE COALESCE(player_match.num_of_wins,0) = " + str(wins)
+        c.execute(query)   # Get data from the VIEW. Set the value to 0 if it's NULL.
         standings += c.fetchall()
     
     conn.close()
 
     return standings
+
 
 
 def reportMatch(winner, loser):
@@ -105,27 +114,32 @@ def reportMatch(winner, loser):
     conn = psycopg2.connect("dbname=tournament")
     c = conn.cursor() 
 
-    c.execute("SELECT num_of_wins FROM match WHERE id = " + str(winner))
+    query = "SELECT num_of_wins FROM match WHERE id = " + str(winner)
+    c.execute(query)
     num_of_wins_winner = c.fetchall()[0][0] + 1
 
-    c.execute("SELECT num_of_matches FROM match WHERE id = " + str(winner))
+    query = "SELECT num_of_matches FROM match WHERE id = " + str(winner)
+    c.execute(query)
     num_of_matches_winner = c.fetchall()[0][0] + 1 
 
-    c.execute("SELECT num_of_matches FROM match WHERE id = " + str(loser))
+    query = "SELECT num_of_matches FROM match WHERE id = " + str(loser)
+    c.execute(query)
     num_of_matches_loser = c.fetchall()[0][0] + 1   
 
-    c.execute("UPDATE match SET num_of_wins = " + str(num_of_wins_winner) + " WHERE id = " + str(winner))   # Update num_of_wins for the winner.
-    c.execute("UPDATE match SET num_of_matches = " + str(num_of_matches_winner) + " WHERE id = " + str(winner))   # Update num_of_matches for both the winner and loser.
-    c.execute("UPDATE match SET num_of_matches = " + str(num_of_matches_loser) + " WHERE id = " + str(loser))
+    query = "UPDATE match SET num_of_wins = " + str(num_of_wins_winner) + " WHERE id = " + str(winner)
+    c.execute(query)   # Update num_of_wins for the winner.
+
+    query = "UPDATE match SET num_of_matches = " + str(num_of_matches_winner) + " WHERE id = " + str(winner)
+    c.execute(query)   # Update num_of_matches for both the winner and loser.
+
+    query = "UPDATE match SET num_of_matches = " + str(num_of_matches_loser) + " WHERE id = " + str(loser)
+    c.execute(query)
     
     conn.commit()
     conn.close()
 
 
 
-
- 
- 
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
   
@@ -149,7 +163,8 @@ def swissPairings():
     max_win = c.fetchall()[0][0]
 
     for wins in range(0,max_win + 1):   # loop through num_of_wins
-        c.execute("SELECT player.id, player.name FROM player, match WHERE player.id = match.id and num_of_wins = " + str(wins))
+        query = "SELECT player.id, player.name FROM player, match WHERE player.id = match.id and num_of_wins = " + str(wins)
+        c.execute(query)
         res = c.fetchall()
         
         pairs= []
@@ -164,7 +179,5 @@ def swissPairings():
                 pairing.append(tuple(pairs))
 
     conn.close()
+    
     return pairing
-
-
-
